@@ -18,7 +18,6 @@ from collections import Counter
 from dotenv import load_dotenv
 import pymysql
 from waitress import serve
-from app import app
 from flask import Blueprint
 
 
