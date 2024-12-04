@@ -17,6 +17,7 @@ import calendar
 from collections import Counter
 from dotenv import load_dotenv
 import pymysql
+from waitress import serve
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -716,6 +717,5 @@ def add_info():
         logging.error(f"Error adding information: {e}")
         return jsonify({'error': 'Failed to add information. Please try again later.'}), 500
 if __name__ == '__main__':   
-     
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+
+    serve(app, host='0.0.0.0', port=5000)
