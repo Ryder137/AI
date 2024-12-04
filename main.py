@@ -17,9 +17,6 @@ import calendar
 from collections import Counter
 from dotenv import load_dotenv
 import pymysql
-from waitress import serve
-from app import app
-from app.routes import main_bp  
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -324,8 +321,402 @@ I-click ang logo ng Perpetual para sa portal ng estudyante at ang logo ng CCS pa
 )
 
 chat_session = None  # Global variable to store the chat session
-app.register_blueprint(main_bp)
 
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db_session.remove()
+
+@app.route('/start_session', methods=['POST'])
+def start_session():
+    # Clear existing session data if any
+    session.clear()
+
+    data = request.get_json()
+    session_id = str(uuid4())  # Generate a new unique session ID
+    student_id = data.get('student_id')
+    email = data.get('email')
+    
+    # Create a new conversation
+    new_conversation = Conversation(session_id=session_id, student_id=student_id, email=email)
+    db_session.add(new_conversation)
+    db_session.commit()
+    
+    # Save session ID in user's session data
+    session['session_id'] = session_id
+    return jsonify({'session_id': session_id})
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+def update_or_create_student(student_name, student_id, email):
+    # Check if both student_id and email are empty
+    if not student_id and not email:
+        raise ValueError("Either Student ID or Email must be provided.")
+
+    # If student_id is provided, use it for lookup
+    if student_id:
+        student = db_session.query(Student).filter_by(student_id=student_id).first()
+    else:
+        # If student_id is not provided, use email for lookup
+        student = db_session.query(Student).filter_by(email=email).first()
+
+    if student:
+        # Update existing student
+        student.name = student_name
+        if email:  # Update email only if provided
+            student.email = email
+        if student_id:  # Update student_id only if provided
+            student.student_id = student_id
+    else:
+        # Create new student
+        if not student_id:  # If student_id is not provided, set it to None or a default value
+            student_id = None  # or some default value if applicable
+        student = Student(name=student_name, student_id=student_id, email=email)
+        db_session.add(student)
+
+    db_session.commit()
+    return student
+
+logging.basicConfig(level=logging.INFO)
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json
+
+    user_message = data.get('message')
+    student_name = data.get('student_name')
+    student_id = data.get('student_id')
+    email = data.get('email')
+
+    # Log incoming message
+    logging.info(f"Received message from {student_name} (ID: {student_id}): {user_message}")
+
+    # Check for required fields
+    if not user_message or not student_name:
+        logging.error('Missing required fields.')
+        return jsonify({'error': 'Missing required fields: message and student_name.'}), 400
+
+    # Check if either student_id or email is provided
+    if not student_id and not email:
+        logging.error('Either student ID or email must be provided.')
+        return jsonify({'error': 'Either student ID or email must be provided.'}), 400
+
+    sanitized_user_message = sanitize_message(user_message)
+
+    # Check if the user is asking for the current date and time
+    if "what is the date" in sanitized_user_message.lower() or "what is the time" in sanitized_user_message.lower():
+        current_time = get_current_time()  # Fetch current time from the API
+        if current_time:
+            date_response = datetime.fromisoformat(current_time).astimezone(pytz.timezone('Asia/Manila')).strftime("%A, %B %d, %Y")
+            time_response = datetime.fromisoformat(current_time).astimezone(pytz.timezone('Asia/Manila')).strftime("%I:%M %p")
+            response = f"The current date is {date_response} and the time is {time_response}."
+        else:
+            response = "I'm sorry, but I couldn't fetch the current date and time."
+
+        # Emit the response back to the user
+        socketio.emit('receive_message', {
+            'query': sanitized_user_message,
+            'response': response,
+            'student_name': student_name,
+            'timestamp': datetime.now(pytz.timezone('Asia/Manila')).isoformat()
+        })
+
+        return jsonify({'response': response, 'session_id': session.get('session_id')}), 200
+
+    # Update or create the student record
+    student = update_or_create_student(student_name, student_id, email)
+
+    # Ensure student_id is valid if provided
+    if student_id and not student.student_id:
+        logging.error('Student ID cannot be None or empty.')
+        return jsonify({'error': 'Student ID cannot be None or empty.'}), 400
+
+    # Retrieve the session ID from the Flask session
+    chat_session = session.get('session_id')
+
+    # Check for existing conversation
+    conversation = db_session.query(Conversation).filter_by(session_id=chat_session).first()
+
+    if conversation is None:
+        # If no conversation exists, create a new one
+        conversation = Conversation(session_id=chat_session, student_id=student.student_id, email=email)
+        db_session.add(conversation)
+        db_session.commit()  # Commit the new conversation
+
+    # Create a new message
+    new_message = Message(
+        student_id=student.student_id,
+        email=email,
+        query=sanitized_user_message,
+        response=None,
+        session_id=chat_session  # Use the session_id from the Flask session
+    )
+
+    db_session.add(new_message)
+    
+    try:
+        db_session.commit()  # Commit the new message
+    except Exception as e:
+        logging.error(f"Error committing new message: {e}")
+        return jsonify({'error': 'Failed to save message.'}), 500
+
+    # Generate the response using the AI model
+
+    try:
+        # Combine user query with bot information for context
+        context = " ".join(bot_information)  # Join all information into a single string
+        full_query = f"{context} {sanitized_user_message}"  # Combine with user query
+
+        logging.info(f"Full query sent to AI model: {full_query}")  # Log the full query
+
+        response = model.generate_content(full_query)
+        sanitized_response = response.content if hasattr(response, 'content') else response.text
+        sanitized_response = sanitize_message(sanitized_response)
+
+        # Update the response in the database
+        new_message.response = sanitized_response  # Save the bot's response
+        db_session.commit()  # Commit the response to the database
+    except Exception as e:
+        logging.error(f"Error generating response: {e}")
+        return jsonify({'error': 'Failed to generate response.'}), 500
+
+    logging.info(f"Generated response: {sanitized_response}")
+
+    # Emit the new message and response to all connected clients
+    socketio.emit('receive_message', {
+        'query': sanitized_user_message,
+        'response': sanitized_response,
+        'student_name': student_name,
+        'timestamp': datetime.now(pytz.timezone('Asia/Manila')).isoformat()
+    })
+
+    return jsonify({'response': sanitized_response, 'session_id': chat_session}), 200
+
+def get_current_time():
+    try:
+        response = requests.get("http://worldtimeapi.org/api/timezone/Asia/Manila")  # Use Philippine timezone API
+        response.raise_for_status()  # Raise an error for bad responses
+        data = response.json()
+        current_time = data['datetime']  # Get the current time in ISO format
+        return current_time
+    except Exception as e:
+        logging.error(f"Error fetching current time: {e}")
+        return datetime.now(pytz.timezone('Asia/Manila')).isoformat()  # Return current time in Philippine timezone
+
+
+def sanitize_message(message):
+    sanitized = re.sub(r'\*\*([^*]+)\*\*', r'\1', message)
+    sanitized = re.sub(r'\*([^*]+)\*', r'\1', sanitized)
+    sanitized = re.sub(r'^[\*\-•]\s+', '', sanitized, flags=re.MULTILINE)
+    sanitized = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', sanitized)
+    sanitized = re.sub(r'_', '', sanitized)
+    sanitized = sanitized.strip()
+    return sanitized
+
+@app.route('/get_conversation/<session_id>', methods=['GET'])
+def get_conversation(session_id):
+    # Retrieve the conversation for the given session_id
+    conversation = db_session.query(Conversation).filter_by(session_id=session_id).first()
+    
+    if not conversation:
+        return jsonify({"error": "Conversation not found."}), 404
+
+    # Prepare the response data with all messages in the conversation
+    conversation_data = {
+        "session_id": conversation.session_id,
+        "student_id": conversation.student_id,
+        "email": conversation.email,
+        "timestamp": conversation.timestamp.isoformat(),
+        "messages": [
+            {
+                "student_id": message.student_id,
+                "email": message.email,
+                "query": message.query,
+                "response": message.response,
+                "timestamp": message.timestamp.isoformat()  # Convert to ISO format for JSON serialization
+            }
+            for message in conversation.messages  # Use the relationship to get messages
+        ]
+    }
+
+    return jsonify(conversation_data), 200
+
+# Ensure your SQLAlchemy models are imported
+
+
+@app.route('/get_conversation_history', methods=['POST'])
+def get_conversation_history():
+    data = request.json
+    student_id = data.get("student_id")
+    email = data.get("email")
+
+    # Query the conversation table based on student_id or email
+    if student_id:
+        conversations = db_session.query(Conversation).filter_by(student_id=student_id).all()
+    elif email:
+        conversations = db_session.query(Conversation).filter_by(email=email).all()
+    else:
+        return jsonify({"error": "Student ID or email is required"}), 400
+
+    # Format response
+    history = [
+        {"session_id": convo.session_id, "timestamp": convo.timestamp.isoformat()}
+        for convo in conversations
+    ]
+    return jsonify({"history": history})
+
+@app.route('/get_conversation_messages', methods=['POST'])
+def get_conversation_messages():
+    data = request.json
+    session_id = data.get("session_id")
+
+    if not session_id:
+        return jsonify({"error": "Session ID is required"}), 400
+
+    try:
+        # Query the database for messages associated with the session_id
+        messages = db_session.query(Message).filter_by(session_id=session_id).order_by(Message.timestamp).all()
+
+        if not messages:
+            return jsonify({"messages": []}), 200  # Return an empty list if no messages found
+
+        # Format the messages for the response
+        message_data = [
+            {
+                "student_id": msg.student_id,
+                "email": msg.email,
+                "query": msg.query,
+                "response": msg.response,
+                "timestamp": msg.timestamp.isoformat()
+            }
+            for msg in messages
+        ]
+
+        # Log the response data
+        print("Response data:", message_data)
+
+        return jsonify({"messages": message_data}), 200
+    except Exception as e:
+        # Log the error for debugging
+        print("Error retrieving messages:", str(e))
+        return jsonify({"error": "An error occurred while retrieving messages."}), 500
+    
+@app.route('/admin', methods=['GET'])
+def admin_panel():
+    return render_template('admin_panel.html')  # Ensure you have an HTML file named admin_panel.html
+
+@app.route('/admin/todays_interactions', methods=['GET'])
+def todays_interactions():
+    try:
+        # Get the current date
+        now = datetime.now(pytz.timezone('Asia/Manila'))
+        start_of_day = datetime(now.year, now.month, now.day)
+        end_of_day = start_of_day + timedelta(days=1)
+
+        # Query messages for today
+        messages = db_session.query(Message).filter(
+            Message.timestamp >= start_of_day,
+            Message.timestamp < end_of_day
+        ).all()
+
+        total_messages_today = len(messages)
+        questions = [msg.query for msg in messages]
+
+        # Calculate the most common question
+        most_common_question = None
+        if questions:
+            question_counts = Counter(questions)
+            most_common_question, _ = question_counts.most_common(1)[0]  # Get the most common question
+
+        return jsonify({
+            'total_messages_today': total_messages_today,
+            'questions': questions,
+            'most_common_question': most_common_question or 'No questions available'  # Default message if no questions
+        })
+    except Exception as e:
+        print(f"Error fetching today's interactions: {e}")
+        return jsonify({"error": "Failed to fetch today's interactions", "details": str(e)}), 500
+
+@app.route('/admin/daily_report', methods=['GET'])
+def daily_report():
+    print("Received request for daily report")
+    try:
+        # Simulate a response for testing
+        return jsonify({'total_inquiries_today': 10})
+    except Exception as e:
+        print(f"Error fetching daily report: {e}")
+        return jsonify({"error": "Failed to fetch daily report", "details": str(e)}), 500
+    
+@app.route('/admin/monthly_report', methods=['GET'])
+def monthly_report():
+    try:
+        # Get the current month and year
+        now = datetime.now(pytz.timezone('Asia/Manila'))
+        current_month = now.month
+        current_year = now.year
+
+        # Calculate the start and end of the month
+        start_of_month = datetime(current_year, current_month, 1)
+        if current_month == 12:
+            end_of_month = datetime(current_year + 1, 1, 1)  # January of next year
+        else:
+            end_of_month = datetime(current_year, current_month + 1, 1)  # First day of next month
+
+        # Query messages for the current month
+        messages = db_session.query(Message).filter(
+            Message.timestamp >= start_of_month,
+            Message.timestamp < end_of_month
+        ).all()
+
+        # Initialize a list to hold counts for each day of the month
+        days_count = [0] * 31  # Assuming a maximum of 31 days
+
+        # Count messages for each day
+        for msg in messages:
+            day = msg.timestamp.day  # Get the day from the timestamp
+            days_count[day - 1] += 1  # Increment the count for that day
+
+        # Prepare the response data
+        days = [str(i + 1) for i in range(31)]  # Days of the month as strings
+        return jsonify({
+            'days': days[:now.day],  # Only return days up to the current day
+            'daily_counts': days_count[:now.day]  # Only return counts up to the current day
+        })
+    except Exception as e:
+        print(f"Error fetching monthly report: {e}")
+        return jsonify({"error": "Failed to fetch monthly report", "details": str(e)}), 500
+    
+@app.route('/admin/student_interactions', methods=['GET'])
+def student_interactions():
+    print("Received request for student interactions")
+    try:
+        # Simulate a response for testing
+        return jsonify({
+            'labels': ['Week 4', 'Week 3', 'Week 2', 'Week 1'],
+            'data': [5, 10, 15, 20]
+        })
+    except Exception as e:
+        print(f"Error fetching student interactions: {e}")
+        return jsonify({"error": "Failed to fetch student interactions", "details": str(e)}), 500
+@app.route('/admin/add_info', methods=['POST'])
+def add_info():
+    data = request.json
+    info = data.get('info')
+
+    if not info:
+        return jsonify({'error': 'No information provided.'}), 400
+
+    try:
+        # Add the information to the global list
+        bot_information.append(info)
+        logging.info(f"Added information: {info}")  # Log the added information
+        return jsonify({'message': 'Information added successfully!'}), 200
+    except Exception as e:
+        logging.error(f"Error adding information: {e}")
+        return jsonify({'error': 'Failed to add information. Please try again later.'}), 500
 if __name__ == '__main__':   
+     
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
-    serve(app, host='0.0.0.0', port=5000)
