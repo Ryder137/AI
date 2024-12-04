@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"> <!-- Link to your CSS file -->
+</head>
+<body>
+    <div class="moving-lines"></div> <!-- Moving lines background -->
+    <div class="login-container">
+        <h1>Login</h1>
+        <form id="loginForm">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">Login</button>
+        </form>
+        <div id="loginResponse"></div>
+
+        <!-- Forgot Password and Sign Up buttons as links -->
+        <button class="link-btn" onclick="window.location.href='forgot-password.html'">Forgot Password?</button>
+        <a href="{{ url_for('signup') }}">
+            <button type="submit">Sign up</button>
+        </a>
+
+        <!-- Back Button -->
+        <a href="{{ url_for('home') }}">
+            <button class="back-btn">Back</button>
+        </a>
+    </div>
+</div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const response = await fetch('login.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password }),
+            });
+
+            const result = await response.json();
+            const loginResponse = document.getElementById('loginResponse');
+            loginResponse.innerHTML = result.error ? 
+                `<p>Error: ${result.error}</p>` : 
+                `<p>${result.message}</p>`;
+        });
+    </script>
+</body>
+</html>

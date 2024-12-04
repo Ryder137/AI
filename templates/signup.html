@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"> <!-- Link to your CSS file -->
+    <style>
+        /* Container for the form */
+        .login-container {
+            width: 400px;
+            margin: 50px auto;
+            background-color: #f7f7f7;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Two-column layout for form inputs */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        /* Make the password and confirm password inputs span both columns */
+        .full-width {
+            grid-column: 1 / 3;
+        }
+
+        /* General form input styling */
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button.back-btn {
+            background-color: #999;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="moving-lines"></div> <!-- Moving lines background -->
+    <div class="login-container">
+        <h1>Sign Up</h1>
+        <form id="signup-form" method="POST" class="form-grid"> <!-- Set action and method for the form -->
+            <div class="full-width">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+
+            <div>
+                <label for="student_id">Student ID:</label>
+                <input type="text" id="student_id" name="student_id" required>
+            </div>
+
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+
+            <div>
+                <label for="confirm-password">Confirm Password:</label>
+                <input type="password" id="confirm-password" name="confirm_password" required>
+            </div>
+
+            <div class="full-width">
+                <button type="submit">Sign Up</button>
+            </div>
+        </form>
+
+        <a href="{{ url_for('login') }}">
+            <button class="back-btn">Back to Login</button>
+        </a>
+    </div>
+
+    <script>
+        document.getElementById('signup-form').addEventListener('submit', async function (e) {
+            e.preventDefault(); // Prevent default form submission
+
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const student_id = document.getElementById('student_id').value;
+            const password = document.getElementById('password').value;
+            const confirm_password = document.getElementById('confirm-password').value; // Get confirm password
+
+            // Validate confirm password on client-side
+            if (password !== confirm_password) {
+                alert('Error: Passwords do not match.');
+                return;
+            }
+
+            try {
+                const response = await fetch('signup.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name, email, student_id, password, confirm_password }), // Include confirm_password
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message); // Show success message
+                    // Optionally redirect to login or another page
+                } else {
+                    alert('Error: ' + result.error); // Show error message
+                }
+            } catch (error) {
+                alert('Error: Unable to reach the server.'); // Show network error
+            }
+        });
+    </script>
+</body>
+</html>

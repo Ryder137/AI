@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat with BieBot</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='bie.png') }} ">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+
+        /* Star styles */
+        #constellations {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .star {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            opacity: 0.8;
+            animation: twinkle 2s infinite ease-in-out alternate;
+        }
+
+        .star.small { width: 2px; height: 2px; }
+        .star.medium { width: 4px; height: 4px; }
+        .star.large { width: 6px; height: 6px; }
+
+        @keyframes twinkle {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+
+        /* Bot message styles */
+        .bot-message-container {
+            max-width: 95%; /* Increase width for mobile */
+            width: auto; /* Allow it to take available space */
+            word-wrap: break-word; /* Break long words */
+            margin: 5px auto; /* Center the message and add vertical spacing */
+            padding: 10px; /* Add padding for better readability */
+            border-radius: 15px 15px 15px 0;  /* Rounded corners for messages */
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); /* Optional: subtle shadow for depth */
+        }
+
+        /* Sidebar styles */
+        .sidebar {
+            width: 250px; /* Fixed width for the sidebar */
+            padding: 15px;
+            border-right: 1px solid #ccc;
+            transition: transform 0.3s ease;
+            position: relative; /* Keep it relative to the chat section */
+            display: flex; /* Use flexbox for sidebar content */
+            flex-direction: column; /* Stack items vertically */
+            overflow-y:auto;
+        }
+        
+
+
+        /* Button to toggle sidebar */
+        .toggle-sidebar-btn {
+            display: none; /* Hidden by default */
+            position: fixed; /* Fixed position */
+            top: 10px; /* Position from the top */
+            left: 10px; /* Position from the left */
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 10; /* Ensure it is above other elements */
+        }
+
+        /* Conversation History Styles */
+        .conversation-item {
+            cursor: pointer;
+            margin: 5px 0;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #ADD8E6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .conversation-item:hover {
+            background-color: #e0e0e0;
+        }
+
+        .conversation-title {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .edit-title {
+            display: none;
+        }
+
+        .edit-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .read-aloud-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px; /* Add spacing */
+        }
+        .conversation-history {
+            max-height: 70vh; /* Set a maximum height for the conversation history */
+            overflow-y: auto; /* Enable vertical scrolling */
+        }
+
+        .read-aloud-btn:hover {
+            background-color: #0056b3;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 668px) {
+            .chat-container {
+                flex-direction: column; /* Stack vertically on mobile */
+            }
+        
+            .toggle-sidebar-btn {
+                display: block; /* Show the toggle button on mobile */
+                position: fixed; /* Fixed position to stay visible */
+                top: 10px; /* Position from the top */
+                left: 10px; /* Position from the left */
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 10px;
+                border-radius: 5px;
+                cursor: pointer;
+                z-index: 10; /* Ensure it is above other elements */
+            }
+        
+            .sidebar {
+                transform: translateX(-100%); /* Move sidebar out of view by default */
+                width: 100%; /* Full width on mobile */
+                position: fixed; /* Fixed position for the sidebar */
+                top: 0; /* Align to the top */
+                left: 0; /* Align to the left */
+                z-index: 5; /* Ensure it appears above other content */
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* Add shadow for better visibility */
+                overflow-y: hidden; /* Prevent scrolling on the sidebar */
+                transition: transform 0.3s ease; /* Smooth transition */
+            }
+            .chat-options button {
+                font-size:10px;
+                padding:10px 5px;
+            }
+        
+            /* Sidebar hidden class to toggle visibility */
+            .sidebar.hidden {
+                transform: translateX(-100%); /* Hide the sidebar */
+            }
+        
+            .sidebar.visible {
+                transform: translateX(0); /* Show the sidebar */
+            }
+        
+            .chat-section {
+                width: 100%; /* Full width for chat section */
+                padding: 0px;
+            }
+        
+            /* Other styles remain unchanged */
+            .chat-box {
+                padding: 5px; /* Reduced padding */
+                max-height: 60vh;
+                overflow-y: auto; /* Enable scrolling */
+            }
+        
+            .message-input input {
+                padding: 8px; /* Smaller padding */
+                width: calc(100% - 60px); /* Full width minus button */
+            }
+        
+            .message-input button {
+                padding: 8px 10px; /* Smaller button padding */
+            }
+        
+            .bot-message {
+                max-width: 95%; /* Ensure it takes up more width on mobile */
+                padding: 8px; /* Slightly reduce padding for mobile */
+                border-radius: 15px 15px 15px 0; 
+            }
+        
+            .conversation-item {
+                font-size: 12px; /* Smaller font size for items */
+            }
+        
+            /* Adjust font sizes for mobile */
+            h1 {
+                font-size: 18px; /* Smaller font size for main heading */
+            }
+        
+            h3 {
+                font-size: 14px; /* Smaller font size for subheading */
+            }
+        
+            .message-input input {
+                font-size: 14px; /* Smaller font size for input */
+            }
+        
+            .message-input button {
+                font-size: 14px; /* Smaller font size for button */
+            }
+        
+            .bot-message-container p {
+                font-size: 14px; /* Smaller font size for bot messages */
+                width: 100%; /* Set width to 90% of the parent container */
+                max-width: 400px; /* Optional: Set a maximum width for larger screens */
+                margin: 0 auto; /* Center the paragraph within the container */
+                word-wrap: break-word; /* Ensure long words break to the next line */
+            }
+        
+            .user-message p {
+                font-size: 14px; /* Smaller font size for user messages */
+                width: 90%; /* Set width to 90% of the parent container */
+                max-width: 400px; /* Optional: Set a maximum width for larger screens */
+                margin: 0 auto; /* Center the paragraph within the container */
+                word-wrap: break-word; /* Ensure long words break to the next line */
+            }
+        }
+                    /* Responsive adjustments */
+            @media (max-width: 768px) {
+                .chat-header {
+                    padding: 15px; /* Reduce padding for mobile */
+                    flex-direction: row; /* Ensure items stay in a row */
+                    justify-content: center; /* Center items */
+                    text-align: center; /* Center text */
+                }
+
+                .header-text {
+                    margin: 0 10px; /* Add horizontal margin for spacing */
+                    flex-grow: 1; /* Allow text to take available space */
+                }
+
+                .chat-header img {
+                    height: 50px; /* Smaller logo height for mobile */
+                    width: auto; /* Maintain aspect ratio */
+                }
+
+                .chat-header h1 {
+                    font-size: 16px; /* Smaller font size for mobile */
+                }
+
+                .chat-header h3 {
+                    font-size: 12px; /* Smaller font size for mobile */
+                }
+            }
+    </style>
+</head>
+<body>
+    <div id="constellations"></div>
+    <div class="chat-container">
+        <button class="toggle-sidebar-btn" id="toggle-sidebar">☰</button> <!-- Toggle button -->
+        <div class="sidebar" id="sidebar">                
+            <h3>Conversation History</h3>
+            <div class="conversation-history" style="overflow-y:auto;">
+                <div id="history"></div>
+            </div>
+            <div class="settings">
+                <button id="new-conversation-button" class="new-chat-btn">+ New Conversation</button>
+            </div>
+        
+        </div>
+        
+        <div class="chat-section">
+            <div class="chat-header">
+                <a href="https://molsa.perpetualdalta.edu.ph:8040/PARENTS_STUDENTS/parents_student_index.htm" target="_blank">
+                    <img src="{{ url_for('static', filename='UPHSDLOGO.png') }}" alt="UPHSD Logo" style="height:60px; width:40px;">
+                </a>
+                <div class="header-text">
+                    <h1>Chat with BieBot</h1>
+                    <h3>Welcome to College of Computer Studies!</h3>
+                </div>
+                <a href="https://www.facebook.com/ccsuphsdmolino1" target="_blank">
+                    <img src="{{ url_for('static', filename='CCS_LOGO.png') }}" alt="CCS Logo" style="height:60px; width: 40px;">
+            </a>
+            </div>
+    
+            <div class="chat-box" id="messages">
+                <!-- Messages will be appended here -->
+            </div>
+
+            <!-- Question Buttons -->
+            <div class="chat-options">
+                <button class="question-btn" data-question="How to add/drop subject?">How to add/drop subject?</button>
+                <button class="question-btn" data-question="Who are the professors?">Who are the professors?</button>
+                <button class="question-btn" data-question="How to apply for Dean’s Lister?">How to apply for Dean’s Lister?</button>
+            </div>
+
+            <div class="message-input">
+                <input type="text" id="user-input" placeholder="Type your message here..." aria-label="Type your message">
+                <button type="button" id="send-button" class="send-btn" aria-label="Send message">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Student Information -->
+    <div id="student-info-modal" class="modal">
+        <div class="modal-content">
+            <h3>Welcome! Please enter your details</h3>
+            <input type="text" id="modal-student-name" placeholder="Your Name" required aria-label="Your Name">
+            <input type="text" id="modal-student-id" placeholder="Student ID (9 digits)" required aria-label="Student ID">
+            <input type="email" id="modal-email" placeholder="Email (If no Student ID)" aria-label="Email">
+            <button id="modal-submit-button">Submit</button>
+        </div>
+    </div>
+
+    <script>
+        let studentName = "";
+        let studentId = "";
+        let email = "";
+        let sessionId = ""; 
+        const messageHistory = []; 
+        let lastSentMessage = '';
+        let firstQuestion = ""; 
+        let conversationCount = 0; 
+        let recognition;
+        let voices = [];
+        
+        fetch('http://localhost:5000/api/data')
+        .then(response => response.json())
+        .then(data => console.log(data))
+        .catch(error => console.error('Error:', error));
+      
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('student-info-modal').style.display = 'flex';
+            createStars();
+
+            document.querySelectorAll('.question-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const question = this.getAttribute('data-question');
+                    sendMessageFromButton(question);
+                });
+            });
+
+            document.getElementById('new-conversation-button').addEventListener('click', newConversation);
+               // Correctly toggle the sidebar
+        // Correctly toggle the sidebar
+            document.getElementById('toggle-sidebar').addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                // Toggle the 'hidden' and 'visible' classes
+                sidebar.classList.toggle('hidden'); // Toggle the hidden class
+                sidebar.classList.toggle('visible'); // Toggle the visible class
+            });
+                        // Toggle history button functionality
+            document.getElementById('toggle-history').addEventListener('click', () => {
+                const chatHistory = document.getElementById('conversation-history'); // Use the correct ID
+                if (chatHistory.style.display === 'none' || chatHistory.style.display === '') {
+                    chatHistory.style.display = 'block'; // Show chat history
+                } else {
+                    chatHistory.style.display = 'none'; // Hide chat history
+                }
+            });
+
+            document.getElementById('start-recognition').addEventListener('click', startRecognition);
+        });
+
+        document.getElementById('modal-submit-button').addEventListener('click', () => {
+            studentName = document.getElementById('modal-student-name').value.trim();
+            studentId = document.getElementById('modal-student-id').value.trim();
+            email = document.getElementById('modal-email').value.trim();
+
+            if (!studentId && !email) {
+                alert("Please enter either your student ID or your email.");
+                return;
+            }
+            if (studentId && !/^\d{9}$/.test(studentId)) {
+                alert("Please enter a valid 9-digit student ID.");
+                return;
+            }
+            if (!studentName) {
+                alert("Please enter your name.");
+                return;
+            }
+
+            startNewSession();
+        });
+
+        function startNewSession() {
+            sessionId = ""; 
+            sessionStorage.removeItem('sessionId'); 
+
+            fetch('/start_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    student_id: studentId,
+                    email: email,
+                    student_name: studentName
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                    sessionStorage.setItem('sessionId', sessionId);
+                    console.log('New session started with ID:', sessionId);
+
+                    conversationCount++; 
+                    const timestamp = new Date(); 
+                    const conversationTitle = generateConversationTitle(studentName, firstQuestion, conversationCount, timestamp);
+
+                    document.getElementById('messages').innerHTML = ''; 
+                    messageHistory.length = 0; 
+                    lastSentMessage = ''; 
+                    firstQuestion = ''; 
+
+                    const welcomeMessage = `Welcome to BieBot, ${studentName}! We're so glad you're here! How can I brighten your day and help you today?`;
+                    addMessage('bot-message', welcomeMessage);
+                    messageHistory.push({ sender: 'bot', message: welcomeMessage, sessionId, title: conversationTitle });
+
+                    document.getElementById('student-info-modal').style.display = 'none'; 
+                    fetchConversationHistory();
+                } else if (data.error) {
+                    console.error('Error starting session:', data.error);
+                    addMessage('bot-message', `Error: ${data.error}`);
+                } else {
+                    console.error('Unexpected response format:', data);
+                    addMessage('bot-message', 'Unexpected response format. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error("Error starting session:", error);
+                addMessage('bot-message', `Error starting session: ${error.message}`);
+            });
+        }
+
+        function generateConversationTitle(studentName, firstQuestion, conversationCount, timestamp) {
+            const date = timestamp.toLocaleString('en-US', { timeZone: 'Asia/Manila' });
+            return `Conversation ${conversationCount}: ${studentName}'s Conversation (${date})`;
+        }
+
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        document.getElementById('user-input').addEventListener('keypress', event => {
+            if (event.key === 'Enter') sendMessage();
+        });
+
+        function sendMessageFromButton(question) {
+            processMessage(question);
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('user-input');
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            if (!firstQuestion) {
+                firstQuestion = message; 
+            }
+
+            processMessage(message);
+            messageInput.value = '';
+        }
+        
+        // Function to populate the voice list
+        function populateVoiceList() {
+            voices = window.speechSynthesis.getVoices();
+            // If the voices are already loaded, populate the voice options
+            if (voices.length) {
+                console.log("Available voices:", voices);
+            } else {
+                // If not, wait for the voiceschanged event
+                window.speechSynthesis.onvoiceschanged = populateVoiceList;
+            }
+        }
+
+        // Function to speak the text
+        function speak(text, language) {
+            if (!text) return; // Ensure there is text to speak
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = language || 'en-US'; // Set the language
+
+            // Select voice based on language
+            if (language === 'tl') {
+                const tagalogVoice = voices.find(voice => voice.lang === 'tl-PH' || voice.name.toLowerCase().includes('tagalog'));
+                if (tagalogVoice) {
+                    utterance.voice = tagalogVoice;
+                } else {
+                    console.warn("No Tagalog voice found, using default voice.");
+                }
+            } else {
+                const englishVoice = voices.find(voice => voice.lang === 'en-US' || voice.name.toLowerCase().includes('english'));
+                if (englishVoice) {
+                    utterance.voice = englishVoice;
+                } else {
+                    console.warn("No English voice found, using default voice.");
+                }
+            }
+
+            utterance.onend = () => console.log('Speech has finished');
+            utterance.onerror = (event) => console.error('Speech synthesis error:', event.error);
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Function to detect language
+        function detectLanguage(text) {
+            const tagalogKeywords = ['ako', 'kayo', 'mga', 'ng', 'at', 'sa', 'para', 'na', 'ito', 'saan'];
+            const englishKeywords = ['I', 'you', 'the', 'and', 'to', 'for', 'is', 'where'];
+
+            const tagalogCount = tagalogKeywords.filter(keyword => text.toLowerCase().includes(keyword)).length;
+            const englishCount = englishKeywords.filter(keyword => text.toLowerCase().includes(keyword)).length;
+
+            if (tagalogCount > englishCount) {
+                return 'tl'; // Tagalog
+            } else if (englishCount > tagalogCount) {
+                return 'en'; // English
+            } else {
+                return 'en'; // Default to English if undetermined
+            }
+        }
+
+        // Call this function to load the voices
+        populateVoiceList();
+
+        function detectLanguage(text) {
+            const tagalogKeywords = ['ako', 'kayo', 'mga ', 'ng', 'at', 'sa', 'para', 'na', 'ito', 'saan'];
+            const englishKeywords = ['I', 'you', 'the', 'and', 'to', 'for', 'is', 'where'];
+
+            const tagalogCount = tagalogKeywords.filter(keyword => text.toLowerCase().includes(keyword)).length;
+            const englishCount = englishKeywords.filter(keyword => text.toLowerCase().includes(keyword)).length;
+
+            if (tagalogCount > englishCount) {
+                return 'tl'; // Tagalog
+            } else if (englishCount > tagalogCount) {
+                return 'en'; // English
+            } else {
+                return 'en'; // Default to English if undetermined
+            }
+        }
+
+        function processMessage(message) {
+            if (message === lastSentMessage) {
+                alert("You have already sent this message. Please type a different message.");
+                return;
+            }
+
+            lastSentMessage = message;
+            addMessage('user-message', message);
+            messageHistory.push({ sender: 'user', message, sessionId });
+
+            const thinkingMessage = addMessage('bot-message', "BieBot is thinking...");
+
+            const language = detectLanguage(message);
+
+            fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    student_id: studentId, 
+                    message, 
+                    student_name: studentName, 
+                    email,
+                    session_id: sessionId,
+                    language 
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                thinkingMessage.remove();
+
+                if (data.error) {
+                    addMessage('bot-message', `Error: ${data.error}`);
+                } else if (data.response) {
+                    let botResponse = data.response;
+
+                    if (botResponse.includes("thank you")) {
+                        botResponse += " 😊";
+                    }
+                    if (botResponse.includes("help")) {
+                        botResponse += " 🤔";
+                    }
+                    if (botResponse.includes("welcome")) {
+                        botResponse += " 🎉";
+                    }
+
+                    if (message.toLowerCase().includes("student portal")) {
+                        botResponse += `<br><a style="color:white;" href="https://molsa.perpetualdalta.edu.ph:8040/PARENTS_STUDENTS/parents_student_index.htm" style="color: blue; text-decoration: underline;">Click here to access the Student Portal</a>`;
+                    }
+
+                    const botMessageDiv = addMessage('bot-message', botResponse);
+                    const readAloudButton = document.createElement('button');
+                    readAloudButton.className = 'read-aloud-btn';
+                    readAloudButton.textContent = '🔊';
+                    readAloudButton.setAttribute('aria-label', 'Read this message aloud');
+                    readAloudButton.addEventListener('click', () => speak(data.response, language)); // Ensure this is correct
+                    botMessageDiv.appendChild(readAloudButton);
+                } else {
+                    addMessage('bot-message', 'Unexpected response from the server.');
+                }
+            })
+            .catch(error => {
+                thinkingMessage.remove();
+                addMessage('bot-message', `Error: ${error.message || 'An unexpected error occurred.'}`);
+            });
+        }
+
+        function addMessage(type, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', type);
+
+            if (type === 'bot-message') {
+                const botImage = document.createElement('img');
+                botImage.src = 'static/biebot.png';
+                botImage.alt = 'BieBot';
+                botImage.classList.add('bot-image');
+                messageDiv.appendChild(botImage);
+            }
+
+            const messageContent = document.createElement('p');
+            messageContent.innerHTML = message.replace(/\n/g, '<br>');
+            messageDiv.appendChild(messageContent);
+
+            document.getElementById('messages').appendChild(messageDiv);
+            scrollToBottom();
+            return messageDiv;
+        }
+
+        function scrollToBottom() {
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function createStars() {
+            const numStars = 100;
+            const constellations = document.getElementById('constellations');
+            for (let i = 0; i < numStars; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star', getRandomSize());
+                star.style.top = Math.random() * 100 + 'vh';
+                star.style.left = Math.random() * 100 + 'vw';
+                constellations.appendChild(star);
+            }
+        }
+
+        function getRandomSize() {
+            const sizes = ['small', 'medium', 'large'];
+            return sizes[Math.floor(Math.random() * sizes.length)];
+        }
+
+        function fetchConversationHistory() {
+            fetch('/get_conversation_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    student_id: studentId || null,
+                    email: email || null,
+                    session_id: sessionId
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    console.error(data.error);
+                } else {
+                    console.log("Fetched Conversation History:", data.history);
+                    displayConversationHistory(data.history);
+                }
+            })
+            .catch(error => console.error(error));
+        }
+
+        function displayConversationHistory(conversationHistory) {
+            const historyContainer = document.getElementById('history');
+            historyContainer.innerHTML = ''; 
+
+            conversationHistory.forEach(conversation => {
+                const item = document.createElement('div');
+                item.classList.add('conversation-item');
+                
+                const timestamp = new Date(conversation.timestamp);
+                const options = {
+                    timeZone: 'Asia/Manila',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                };
+                const formattedDate = timestamp.toLocaleString('en-US', options);
+                
+                item.textContent = `(Date: ${formattedDate})`;
+                
+                item.addEventListener('click', () => viewConversation(conversation.session_id));
+                historyContainer.insertBefore(item, historyContainer.firstChild);
+            });
+        }
+
+        function viewConversation(selectedSessionId) {
+            console.log(`Fetching messages for session ID: ${selectedSessionId}`);
+            
+            fetch('/get_conversation_messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: selectedSessionId })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    console.error(`Error fetching messages: ${data.error}`);
+                    alert("Failed to load conversation messages.");
+                } else {
+                    console.log("Fetched messages:", data.messages);
+                    document.getElementById('messages').innerHTML = ''; 
+                    data.messages.forEach(msg => {
+                        if (msg.query) {
+                            addMessage('user-message', msg.query);
+                        }
+                        if (msg.response) {
+                            const botMessageDiv = addMessage('bot-message', msg.response);
+                            const readAloudButton = document.createElement('button');
+                            readAloudButton.className = 'read-aloud-btn';
+                            readAloudButton.textContent = '🔊 Read Aloud';
+                            readAloudButton.setAttribute('aria-label', 'Read this message aloud');
+                            readAloudButton.addEventListener('click', () => speak(msg.response));
+                            botMessageDiv.appendChild(readAloudButton);
+                        }
+                    });
+                    scrollToBottom();
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching conversation messages:", error);
+                alert("There was an error retrieving the conversation messages.");
+            });
+        }
+
+        function newConversation() {
+            if (!studentId && !email) {
+                alert("Please enter either your student ID or your email before starting a new conversation.");
+                return;
+            }
+
+            startNewSession();
+        }
+
+        const startRecognition = () => {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false; // Stop automatically after a single recognition
+                recognition.interimResults = false; // Don't show interim results
+                recognition.lang = 'en-US'; // Set the language to English, change to 'tl-PH' for Tagalog
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript; // Get the recognized text
+                    document.getElementById('user-input').value = transcript; // Set the input field to the recognized text
+                    sendMessage(); // Send the message to the bot
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                };
+
+                recognition.onend = () => {
+                    console.log('Speech recognition service disconnected');
+                };
+
+                recognition.start(); // Start the recognition
+            } else {
+                alert('Speech recognition is not supported in this browser.');
+            }
+        };
+
+        window.speechSynthesis.onvoiceschanged = () => {
+            const voices = window.speechSynthesis.getVoices();
+            console.log("Updated available voices:", voices);
+        };
+        function updateViewportSize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            document.getElementById('size').textContent = `${width} x ${height}`;
+        }
+
+        window.addEventListener('resize', updateViewportSize);
+        window.addEventListener('load', updateViewportSize);
+    </script>
+</body>
+</html>

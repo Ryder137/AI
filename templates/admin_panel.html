@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #003366, #66a3ff); /* Dark blue to light blue gradient */
+            color: black; /* Text color */
+        }
+
+        h1 {
+            text-align: center;
+            margin: 20px 0;
+            color:white;
+        }
+
+        h2 {
+            text-align: center;
+            margin: 20px 0;
+            padding: 10px; /* Padding around the h2 */
+            background-color: #f5f5dc; /* Cream background color */
+            border-radius: 8px; /* Rounded corners */
+            color: #333; /* Dark text color for contrast */
+        }
+
+        .container {
+            display: flex; /* Use Flexbox for layout */
+            justify-content: space-between; /* Space between the sections */
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+            margin: 20px auto; /* Center the container */
+            max-width: 1200px; /* Max width for the container */
+        }
+
+        .section {
+            display: flex; /* Use Flexbox for centering */
+            flex-direction: column; /* Stack children vertically */
+            align-items: center; /* Center items horizontally */
+            justify-content: center; /* Center items vertically */
+            padding: 20px;
+            border-radius: 8px;
+            background: #f5f5dc; /* Light transparent background for contrast */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            width: 75%; /* Width of each section */
+            max-width: 500px; /* Max width to prevent stretching on large screens */
+            margin: 20px auto; /* Center the section */
+        }
+
+        ul {
+            list-style-type: none; /* Remove bullet points */
+            padding: 0;
+            max-height: 200px; /* Set a maximum height for the question list */
+            overflow-y: auto; /* Enable vertical scrolling */
+            border: 1px solid #ccc; /* Optional: Add a border for better visibility */
+            border-radius: 5px; /* Rounded corners for the list */
+            margin: 10px 0; /* Add some margin for spacing */
+            width:79%;
+        }
+
+        li {
+            margin: 5px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.8); /* More opaque background for list items */
+            border-radius: 5px;
+            transition: background 0.3s; /* Smooth transition for hover effect */
+        }
+
+        li:hover {
+            background: rgba(255, 255, 255, 1); /* Change background on hover */
+        }
+
+        form {
+            margin: 20px auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1); /* Light transparent background for the form */
+            border-radius: 8px;
+            width: 80%; /* Width of the form */
+            max-width: 600px; /* Max width to prevent stretching on large screens */
+            color: black;
+        }
+
+        textarea {
+            width: 100%; /* Full width for textarea */
+            height: 100px; /* Height for textarea */
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #66a3ff; /* Button color */
+            color: white; /* Button text color */
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #007bb5; /* Darker button color on hover */
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 20px; /* Smaller font size for header */
+            }
+
+            h2 {
+                font-size: 18px; /* Smaller font size for subheaders */
+            }
+
+            .section {
+                width: 90%; /* Wider sections on smaller screens */
+                margin: 10px auto; /* Adjust margin for smaller screens */
+            }
+
+            #monthlyChart {
+                width: 100% !important; /* Ensure canvas takes full width */
+                height: 300px; /* Adjust height for better visibility */
+            }
+
+            button {
+                width: 100%; /* Full width for buttons */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Admin Panel</h1>
+
+    <div class="container">
+        <div class="section">
+            <h2>Today's Interactions</h2>
+            <h2>Total Inquiries Today: <span id="total-inquiries">0</span></h2>
+            <p id="summary-paragraph"></p>
+            <ul id="questions-list"></ul>
+        </div>
+
+        <div class="section">
+            <h2>Monthly Interactions</h2>
+            <canvas id="monthlyChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Add Information for Bot Response</h2>
+        <form id="add-info-form">
+            <label for="info">Information:</label>
+            <textarea id="info" required></textarea>
+            <button type="submit">Add Info</button>
+        </form>
+    </div>
+
+    <script>
+        async function fetchTodaysInteractions() {
+            try {
+                const response = await fetch('/admin/todays_interactions');
+                const data = await response.json();
+                console.log('Todays Interactions:', data);  // Log the response to see its structure
+                
+                if (data.error) {
+                    throw new Error(data.error); // Throw an error if the API returns an error
+                }
+        
+                // Display the total number of inquiries
+                document.getElementById('total-inquiries').innerText = data.total_messages_today || 0;  // Default to 0 if undefined
+                
+                // Create a summary for the questions
+                const summaryParagraph = document.getElementById('summary-paragraph'); // Reference the summary paragraph
+                summaryParagraph.innerHTML = ''; // Clear previous summary
+        
+                if (data.questions && data.questions.length > 0) {
+                    // Create a summary statement
+                    const summary = `Today, there were a total of ${data.questions.length} inquiries.`;
+                    summaryParagraph.innerText = summary; // Set the summary text
+        
+                    // Determine the majority inquiry topic
+                    const topicCounts = {};
+                    data.questions.forEach(question => {
+                        // Check for specific student questions
+                        if (question.toLowerCase().includes('faculty')) {
+                            topicCounts['Faculty'] = (topicCounts['Faculty'] || 0) + 1;
+                        } else if (question.toLowerCase().includes('dean`s lister')) {
+                            topicCounts['Dean`s Lister'] = (topicCounts['Dean`s Lister'] || 0) + 1;
+                        } else if (question.toLowerCase().includes('contact of the professors')) {
+                            topicCounts['Contact of the Professors'] = (topicCounts['Contact of the Professors'] || 0) + 1;
+                        } else if (question.toLowerCase().includes('adding/dropping subjects')) {
+                            topicCounts['Adding/Dropping Subjects'] = (topicCounts['Adding/Dropping Subjects'] || 0) + 1;
+                        } else if (question.toLowerCase().includes('enrollment')) {
+                            topicCounts['Enrollment'] = (topicCounts['Enrollment'] || 0) + 1;
+                        } else {
+                            topicCounts['General Question'] = (topicCounts['General Question'] || 0) + 1;
+                        }
+                    });
+        
+                    // Find the topic with the highest count
+                    let majorityTopic = '';
+                    let maxCount = 0;
+                    for (const topic in topicCounts) {
+                        if (topicCounts[topic] > maxCount) {
+                            maxCount = topicCounts[topic];
+                            majorityTopic = topic;
+                        }
+                    }
+        
+                    // Update the summary with the majority inquiry topic
+                    summaryParagraph.innerText += ` The majority inquiry is about ${majorityTopic}.`;
+        
+                    // Populate the questions list
+                    const questionsList = document.getElementById('questions-list'); // Reference the questions list
+                    questionsList.innerHTML = ''; // Clear previous entries
+        
+                    data.questions.forEach(question => {
+                        const li = document.createElement('li');
+                        li.innerText = question; // Add each question to the list
+                        questionsList.appendChild(li); // Append to the list
+                    });
+                } else {
+                    summaryParagraph.innerText = 'No inquiries were received today.'; // Message if no questions
+                    document.getElementById('questions-list').innerHTML = ''; // Clear questions list if no inquiries
+                }
+            } catch (error) {
+                console.error('Error fetching interactions:', error);
+                alert('Failed to fetch today\'s interactions. Please try again later.'); // User feedback
+            }
+        }
+
+        async function fetchMonthlyInteractions() {
+            try {
+                const response = await fetch('/admin/monthly_report');
+                const data = await response.json();
+                console.log('Monthly Report Data:', data); // Log the response for debugging
+    
+                if (data.error) {
+                    throw new Error(data.error); // Throw an error if the API returns an error
+                }
+    
+                // Check if data.days and data.daily_counts are not empty
+                if (!data.days || data.days.length === 0 || !data.daily_counts || data.daily_counts.length === 0) {
+                    console.warn('No data available for the monthly report.');
+                    alert('No data available for the monthly report.'); // User feedback
+                    return; // Exit if there's no data
+                }
+    
+                const ctx = document.getElementById('monthlyChart').getContext ('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.days,  // Days of the month
+                        datasets: [{
+                            label: 'Daily Inquiries',
+                            data: data.daily_counts,  // Daily counts of inquiries
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Number of Inquiries'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Days of the Month'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Monthly Inquiries Report'
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error fetching monthly interactions:', error);
+                alert('Failed to fetch monthly interactions. Please try again later.'); // User feedback
+            }
+        }
+
+        document.getElementById('add-info-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const info = document.getElementById('info').value;
+            try {
+                const response = await fetch('/admin/add_info', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ info })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to add information'); // Handle unsuccessful response
+                }
+
+                document.getElementById('info').value = ''; // Clear the textarea
+                alert('Information added successfully!'); // User feedback
+            } catch (error) {
+                console.error('Error adding information:', error);
+                alert('Failed to add information. Please try again later.'); // User feedback
+            }
+        });
+        document.getElementById('add-info-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const info = document.getElementById('info').value;
+            try {
+                const response = await fetch('/admin/add_info', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ info })
+                });
+        
+                if (!response.ok) {
+                    throw new Error('Failed to add information'); // Handle unsuccessful response
+                }
+        
+                document.getElementById('info').value = ''; // Clear the textarea
+                alert('Information added successfully!'); // User feedback
+            } catch (error) {
+                console.error('Error adding information:', error);
+                alert('Failed to add information. Please try again later.'); // User feedback
+            }
+        });
+        // Fetch data on page load
+        fetchTodaysInteractions();
+        fetchMonthlyInteractions();
+    </script>
+</body>
+</html>
