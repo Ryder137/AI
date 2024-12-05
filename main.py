@@ -28,10 +28,10 @@ load_dotenv()
 
 
 # Configure the database connection
-DB_USER = 'root'
+DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_HOST = 'localhost'
-DB_NAME = 'students_db'
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_NAME = os.getenv("DB_NAME", "students_db")
 # Update this line in your code
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
 
@@ -40,7 +40,6 @@ Base = declarative_base(name="Base")
 engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
 Session = sessionmaker(bind=engine)
 db_session = scoped_session(Session)
-
 # Define the Student model
 class Student(Base):
     __tablename__ = 'students'
