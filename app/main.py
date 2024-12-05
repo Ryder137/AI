@@ -33,7 +33,8 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_NAME = os.getenv("DB_NAME", "students_db")
 # Update this line in your code
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
+DATABASE_URL = "mysql+pymysql://username:password@host:port/database_name"
+engine = create_engine(DATABASE_URL)
 
 # SQLAlchemy setup
 Base = declarative_base(name="Base")
